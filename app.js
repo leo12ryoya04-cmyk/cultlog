@@ -97,6 +97,44 @@
   let activeFilter = 'all';
   let statusTimer = null;
 
+  // ---------- sync (Firebase) ----------
+  let sync = null;        // 同期の操作一式(設定がない・読み込み前は null)
+  let syncUser = null;    // ログイン中のユーザー
+  let syncInfo = { fromCache: true, pending: false };
+
+  const persistAdd = (entry) => { if (sync && syncUser) sync.upsert(entry); };
+  const persistRemove = (id) => { if (sync && syncUser) sync.remove(id); };
+
+  function syncStateKey() {
+    if (!syncUser) return '';
+    if (syncInfo.pending || syncInfo.fromCache) return navigator.onLine ? 'syncing' : 'offline';
+    return 'synced';
+  }
+
+  const SYNC_LABEL = {
+    synced: ['synced', '同期済みです。'],
+    syncing: ['syncing', '同期しています…'],
+    offline: ['offline', 'オフラインです。つながったら自動で同期します。']
+  };
+
+  function authMessage(err) {
+    const code = err && err.code ? err.code : '';
+    switch (code) {
+      case 'auth/invalid-credential':
+      case 'auth/wrong-password':
+      case 'auth/user-not-found': return 'メールアドレスかパスワードが違います。はじめての場合は「新規登録」を押してください。';
+      case 'auth/email-already-in-use': return 'このメールアドレスは登録済みです。「ログイン」を押してください。';
+      case 'auth/weak-password': return 'パスワードは6文字以上にしてください。';
+      case 'auth/invalid-email': return 'メールアドレスの形式を確認してください。';
+      case 'auth/missing-password': return 'パスワードを入力してください。';
+      case 'auth/too-many-requests': return '試行回数が多すぎます。しばらく待ってからやり直してください。';
+      case 'auth/network-request-failed': return '通信できませんでした。接続を確認してください。';
+      case 'auth/operation-not-allowed': return 'Firebase 側でメール/パスワードのログインが有効になっていません。';
+      case 'permission-denied': return '保存先への書き込みが許可されていません。Firebase のルール設定を確認してください。';
+      default: return '同期でエラーが起きました(' + (code || '不明') + ')。';
+    }
+  }
+
   // ---------- helpers ----------
   function el(tag, cls, text) {
     const n = document.createElement(tag);
@@ -187,6 +225,7 @@
       setStatus(statusEl, '保存できませんでした。ブラウザの設定(プライベートモードなど)を確認してください。', { error: true });
       return;
     }
+    persistAdd(entry);
     fTitle.value = '';
     fSub.value = '';
     fMemo.value = '';
@@ -255,6 +294,7 @@
         const before = logs.slice();
         logs = logs.filter((l) => l.id !== log.id);
         if (!saveLogs()) { logs = before; return; }
+        persistRemove(log.id);
         render();
       });
       const no = el('button', 'link-btn', 'やめる');
@@ -303,9 +343,11 @@
 
   function renderHero() {
     const n = logs.length;
-    if (!n) { $('hero-meta').textContent = 'Your log begins here.'; return; }
+    const key = syncStateKey();
+    const tag = key ? ' · ' + SYNC_LABEL[key][0] : '';
+    if (!n) { $('hero-meta').textContent = 'Your log begins here.' + tag; return; }
     const oldest = logs.reduce((a, l) => (l.date < a ? l.date : a), logs[0].date);
-    $('hero-meta').textContent = n + (n === 1 ? ' entry' : ' entries') + ' · since ' + oldest.slice(0, 7).replace('-', '.');
+    $('hero-meta').textContent = n + (n === 1 ? ' entry' : ' entries') + ' · since ' + oldest.slice(0, 7).replace('-', '.') + tag;
   }
 
   // ---------- backup ----------
@@ -327,7 +369,7 @@
       backupState.textContent = 'まだ書き出していません';
       stale = logs.length > 0;
     }
-    backupDot.hidden = !stale;
+    backupDot.hidden = !stale || !!syncUser;
   }
 
   $('export-btn').addEventListener('click', () => {
@@ -359,12 +401,14 @@
       const ids = new Set(logs.map((l) => l.id));
       let added = 0, skipped = 0, invalid = 0;
       const before = logs.slice();
+      const addedEntries = [];
       arr.forEach((r) => {
         const n = normLog(r);
         if (!n) { invalid++; return; }
         if (ids.has(n.id)) { skipped++; return; }
         ids.add(n.id);
         logs.push(n);
+        addedEntries.push(n);
         added++;
       });
       sortLogs();
@@ -372,6 +416,7 @@
         logs = before;
         setStatus(backupStatus, '保存できませんでした。ブラウザの設定を確認してください。', { error: true });
       } else {
+        addedEntries.forEach(persistAdd);
         render();
         let msg = added ? added + '件を読み込みました。' : '新しく追加する記録はありませんでした。';
         if (skipped) msg += '(登録済みの' + skipped + '件はスキップ)';
@@ -397,12 +442,119 @@
     document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute('content', color));
   });
 
+  // ---------- sync UI ----------
+  const syncBox = $('sync');
+  const syncForm = $('sync-form');
+  const syncOn = $('sync-on');
+  const syncStatus = $('sync-status');
+  const sEmail = $('s-email');
+  const sPass = $('s-pass');
+  const syncButtons = [$('sync-signin'), $('sync-signup'), $('sync-reset')];
+
+  function renderSync() {
+    if (syncBox.hidden) return;
+    const signedIn = !!syncUser;
+    syncForm.hidden = signedIn;
+    syncOn.hidden = !signedIn;
+    if (signedIn) {
+      $('sync-account').textContent = syncUser.email;
+      const key = syncStateKey();
+      $('sync-state').textContent = SYNC_LABEL[key][1];
+    }
+  }
+
+  function busy(on) { syncButtons.forEach((b) => { b.disabled = on; }); }
+
+  async function runAuth(action) {
+    const email = sEmail.value.trim();
+    if (!email || (action !== 'reset' && !sPass.value)) {
+      setStatus(syncStatus, action === 'reset' ? 'メールアドレスを入力してください。' : 'メールアドレスとパスワードを入力してください。', { error: true });
+      return;
+    }
+    busy(true);
+    try {
+      if (action === 'signin') await sync.signIn(email, sPass.value);
+      if (action === 'signup') await sync.signUp(email, sPass.value);
+      if (action === 'reset') {
+        await sync.resetPassword(email);
+        setStatus(syncStatus, 'パスワード再設定のメールを送りました。届いたメールのリンクから設定してください。', { keep: true });
+      } else {
+        sPass.value = '';
+        setStatus(syncStatus, 'ログインしました。');
+      }
+    } catch (e) {
+      setStatus(syncStatus, authMessage(e), { error: true, keep: true });
+    }
+    busy(false);
+  }
+
+  syncForm.addEventListener('submit', (e) => { e.preventDefault(); if (sync) runAuth('signin'); });
+  $('sync-signup').addEventListener('click', () => { if (sync) runAuth('signup'); });
+  $('sync-reset').addEventListener('click', () => { if (sync) runAuth('reset'); });
+  $('sync-signout').addEventListener('click', async () => {
+    if (!sync) return;
+    writeMeta({ migratedUid: null });
+    try { await sync.signOut(); setStatus(syncStatus, 'ログアウトしました。この端末の記録はそのまま残っています。'); } catch (e) { setStatus(syncStatus, authMessage(e), { error: true }); }
+  });
+
+  const syncHandlers = {
+    onAuth(user) {
+      syncUser = user;
+      syncInfo = { fromCache: true, pending: false };
+      render();
+    },
+    // この端末の記録を、はじめてアカウントに上げるとき(ログインのたびに1度だけ)
+    takeMigration(uid) {
+      return readMeta().migratedUid === uid ? null : logs.slice();
+    },
+    onRemote(docs, info) {
+      syncInfo = info;
+      const remote = docs.map(normLog).filter(Boolean);
+      // キャッシュが空のまま届いた通知で、端末内の記録を消さない
+      if (info.fromCache && !remote.length && logs.length) { render(); return; }
+      if (!syncUser) return;
+      if (readMeta().migratedUid !== syncUser.uid) {
+        const byId = new Map(logs.map((l) => [l.id, l]));
+        remote.forEach((l) => byId.set(l.id, l));
+        logs = Array.from(byId.values());
+        if (!info.fromCache && !info.pending) writeMeta({ migratedUid: syncUser.uid });
+      } else {
+        logs = remote;
+      }
+      sortLogs();
+      saveLogs();
+      render();
+    },
+    onError(err) {
+      setStatus(syncStatus, authMessage(err), { error: true, keep: true });
+    }
+  };
+
+  async function initSync() {
+    const cfg = window.CULTLOG_FIREBASE;
+    if (!cfg || !cfg.apiKey) return;
+    syncBox.hidden = false;
+    renderSync();
+    busy(true);
+    try {
+      const mod = await import('./sync.js');
+      sync = await mod.startSync(cfg, syncHandlers);
+      busy(false);
+    } catch (e) {
+      setStatus(syncStatus, '同期の機能を読み込めませんでした。通信できる状態で、もう一度開いてください。', { error: true, keep: true });
+    }
+  }
+
+  window.addEventListener('online', () => render());
+  window.addEventListener('offline', () => render());
+
   // ---------- init ----------
   function render() {
     renderHero();
     renderFilters();
     renderList();
     renderBackup();
+    renderSync();
   }
 
   // 別タブでの変更を反映
@@ -416,6 +568,7 @@
 
   syncChips();
   render();
+  initSync();
 
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
     navigator.serviceWorker.register('sw.js').catch(() => {});

@@ -37,7 +37,7 @@
       <nav class="nav" aria-label="メニュー">
         <a href="#record">記録</a>
         <a href="#archive">一覧</a>
-        <a href="#backup">保存<i class="dot" id="backup-dot" hidden></i></a>
+        <a href="#backup">同期・保存<i class="dot" id="backup-dot" hidden></i></a>
         <button type="button" class="theme-btn" id="theme-btn" aria-label="表示テーマを切り替える">
           <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17Z" fill="currentColor"/></svg>
         </button>
@@ -141,10 +141,41 @@
     </main>
 
     <section class="backup" id="backup" aria-labelledby="backup-title">
-      <h2 class="sec-title" id="backup-title">Backup<span>保存と引き継ぎ</span></h2>
+      <h2 class="sec-title" id="backup-title">Sync &amp; Backup<span>同期と保存</span></h2>
+
+      <div class="sync" id="sync" hidden>
+        <h3 class="sub-title">Sync<span>端末間の同期</span></h3>
+        <p class="sync-lead" id="sync-lead">メールアドレスとパスワードでログインすると、PCとスマホの記録が自動で同じになります。もう一方の端末でも、同じメールアドレスとパスワードでログインしてください。</p>
+
+        <form class="sync-form" id="sync-form" novalidate>
+          <div class="field">
+            <label for="s-email">Email<span>メールアドレス</span></label>
+            <input type="email" id="s-email" name="email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false">
+          </div>
+          <div class="field">
+            <label for="s-pass">Password<span>パスワード(6文字以上)</span></label>
+            <input type="password" id="s-pass" name="password" autocomplete="current-password">
+          </div>
+          <div class="auth-actions">
+            <button type="submit" class="btn btn-primary" id="sync-signin">ログイン</button>
+            <button type="button" class="btn btn-line" id="sync-signup">はじめて使う(新規登録)</button>
+            <button type="button" class="link-btn" id="sync-reset">パスワードを忘れた</button>
+          </div>
+        </form>
+
+        <div class="sync-on" id="sync-on" hidden>
+          <p class="sync-account" id="sync-account"></p>
+          <p class="sync-state" id="sync-state"></p>
+          <button type="button" class="btn btn-line" id="sync-signout">ログアウト</button>
+        </div>
+
+        <p class="status" id="sync-status" role="status" aria-live="polite"></p>
+      </div>
+
+      <h3 class="sub-title">Backup<span>ファイルへの書き出し</span></h3>
       <div class="backup-grid">
         <div>
-          <p>記録は、いま使っている端末のブラウザの中に保存されます。機種変更やブラウザのデータ削除に備えて、ときどき書き出しておくと安心です。書き出したファイルは、別の端末で「読み込む」から取り込めます。</p>
+          <p>記録は、使っている端末のブラウザの中にも保存されます。同期を使っていても、念のためときどきファイルに書き出しておくと安心です。書き出したファイルは「読み込む」から取り込めます。</p>
           <p class="backup-state" id="backup-state"></p>
         </div>
         <div class="backup-actions">
@@ -159,11 +190,12 @@
 
     <footer class="foot">
       <span>cultlog</span>
-      <span>記録はこの端末の中だけに保存されます</span>
+      <span>あなただけの記録帳</span>
     </footer>
 
   </div>
 
+  <script src="firebase-config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
