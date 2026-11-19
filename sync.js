@@ -56,14 +56,10 @@ export async function startSync(config, handlers) {
 
   function upsert(log) {
     if (!uid) return;
-    fsMod.setDoc(docRef(log.id), {
-      category: log.category,
-      date: log.date,
-      title: log.title,
-      subtitle: log.subtitle,
-      memo: log.memo,
-      createdAt: log.createdAt
-    }).catch(fail);
+    // 記録の中身をまるごと保存する(id はドキュメント名として別に使う)
+    const data = Object.assign({}, log);
+    delete data.id;
+    fsMod.setDoc(docRef(log.id), data).catch(fail);
   }
 
   function remove(id) {

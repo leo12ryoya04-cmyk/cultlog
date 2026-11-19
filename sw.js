@@ -1,5 +1,5 @@
-const CACHE = 'cultlog-v2';
-const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'sync.js', 'firebase-config.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
+const CACHE = 'cultlog-v3';
+const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'settings.js', 'sync.js', 'firebase-config.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

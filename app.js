@@ -1,14 +1,6 @@
 (function () {
   'use strict';
 
-  const CATS = {
-    movie: { label: '映画',   titlePh: '映画のタイトル',       subEn: 'Director', subJa: '監督',         subPh: '監督名',               memoPh: 'ひとこと感想' },
-    book:  { label: '本',     titlePh: '本のタイトル',         subEn: 'Author',   subJa: '著者',         subPh: '著者名',               memoPh: 'ひとこと感想' },
-    art:   { label: '美術',   titlePh: '展覧会・作品名',       subEn: 'Artist',   subJa: 'アーティスト', subPh: 'アーティスト名・会場', memoPh: 'ひとこと感想' },
-    cafe:  { label: '喫茶店', titlePh: '店名',                 subEn: 'Area',     subJa: 'エリア',       subPh: 'エリア・最寄り駅など', memoPh: '頼んだメニュー・雰囲気など' },
-    live:  { label: 'ライブ', titlePh: '公演・アーティスト名', subEn: 'Venue',    subJa: '会場',         subPh: '会場・ステージ名',     memoPh: 'セットリスト・感想など' }
-  };
-  const ORDER = ['movie', 'book', 'art', 'cafe', 'live'];
   const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const LOG_KEY = 'cultlog-logs';
   const META_KEY = 'cultlog-meta';
@@ -17,6 +9,100 @@
 
   const $ = (id) => document.getElementById(id);
   const root = document.documentElement;
+
+  // ---------- settings (settings.js) ----------
+  // 目印の形(24x24 の図形)。settings.js の shape に名前を書くと使われる
+  const SHAPES = {
+    circle:   '<circle cx="12" cy="12" r="8.5"/>',
+    tall:     '<rect x="5.5" y="3.5" width="13" height="17" rx="1"/>',
+    square:   '<rect x="4.5" y="4.5" width="15" height="15" rx="1"/>',
+    leaf:     '<path d="M12 2.8C19.6 5 21.4 13.4 12 21.2 2.6 13.4 4.4 5 12 2.8Z"/>',
+    bowl:     '<path d="M2.8 9h18.4a9.2 9.2 0 0 1-18.4 0Z"/>',
+    star:     '<path d="M12 1.8l2.3 7.9 7.9 2.3-7.9 2.3L12 22.2l-2.3-7.9L1.8 12l7.9-2.3Z"/>',
+    triangle: '<path d="M12 3.8L21 19.5H3Z"/>',
+    diamond:  '<path d="M12 2.8L21.2 12 12 21.2 2.8 12Z"/>',
+    heart:    '<path d="M12 20.5C5 15.5 3 11.5 3 8.5A4.5 4.5 0 0 1 12 6.5 4.5 4.5 0 0 1 21 8.5C21 11.5 19 15.5 12 20.5Z"/>'
+  };
+
+  // settings.js が読み込めなかったときの、初期設定
+  const DEFAULT_SETTINGS = {
+    siteName: 'cultlog',
+    categories: [
+      { id: 'movie', label: '映画',   shape: 'circle', titlePh: '映画のタイトル',       subEn: 'Director', subJa: '監督',         subPh: '監督名',               memoPh: 'ひとこと感想' },
+      { id: 'book',  label: '本',     shape: 'tall',   titlePh: '本のタイトル',         subEn: 'Author',   subJa: '著者',         subPh: '著者名',               memoPh: 'ひとこと感想' },
+      { id: 'art',   label: '美術',   shape: 'leaf',   titlePh: '展覧会・作品名',       subEn: 'Artist',   subJa: 'アーティスト', subPh: 'アーティスト名・会場', memoPh: 'ひとこと感想' },
+      { id: 'cafe',  label: '喫茶店', shape: 'bowl',   titlePh: '店名',                 subEn: 'Area',     subJa: 'エリア',       subPh: 'エリア・最寄り駅など', memoPh: '頼んだメニュー・雰囲気など' },
+      { id: 'live',  label: 'ライブ', shape: 'star',   titlePh: '公演・アーティスト名', subEn: 'Venue',    subJa: '会場',         subPh: '会場・ステージ名',     memoPh: 'セットリスト・感想など' }
+    ],
+    extraFields: []
+  };
+
+  const ID_RE = /^[A-Za-z][A-Za-z0-9_-]*$/;
+  const notices = [];
+  const str = (v, fallback) => (typeof v === 'string' && v.trim() ? v.trim() : fallback);
+
+  function loadSettings() {
+    const given = window.CULTLOG_SETTINGS;
+    if (!given || typeof given !== 'object') {
+      notices.push('settings.js を読み込めませんでした。カンマ・引用符・かっこの書き方を確認してください。いまは初期設定で表示しています。');
+      return DEFAULT_SETTINGS;
+    }
+
+    const seen = new Set();
+    const categories = [];
+    (Array.isArray(given.categories) ? given.categories : []).forEach((c, i) => {
+      if (!c || !ID_RE.test(String(c.id)) || seen.has(c.id) || !str(c.label)) {
+        notices.push('settings.js のジャンル(' + (i + 1) + '番目)に、id か label の間違いがあるため、飛ばしました。');
+        return;
+      }
+      seen.add(c.id);
+      categories.push({
+        id: c.id,
+        label: c.label.trim(),
+        shape: SHAPES[c.shape] ? c.shape : 'circle',
+        titlePh: str(c.titlePh, 'タイトル'),
+        subEn: str(c.subEn, 'Detail'),
+        subJa: str(c.subJa, '詳細'),
+        subPh: str(c.subPh, ''),
+        memoPh: str(c.memoPh, 'ひとこと感想')
+      });
+    });
+    if (!categories.length) {
+      notices.push('settings.js に使えるジャンルがありません。初期設定のジャンルで表示しています。');
+      DEFAULT_SETTINGS.categories.forEach((c) => categories.push(c));
+    }
+
+    const fieldIds = new Set();
+    const extraFields = [];
+    (Array.isArray(given.extraFields) ? given.extraFields : []).forEach((f, i) => {
+      const okSelect = f && f.type === 'select' && Array.isArray(f.options) && f.options.length;
+      if (!f || !ID_RE.test(String(f.id)) || fieldIds.has(f.id) || !(f.type === 'text' || okSelect)) {
+        notices.push('settings.js の追加入力欄(' + (i + 1) + '番目)に間違いがあるため、飛ばしました。');
+        return;
+      }
+      fieldIds.add(f.id);
+      extraFields.push({
+        id: f.id,
+        en: str(f.en, f.id),
+        ja: str(f.ja, f.id),
+        type: f.type,
+        placeholder: str(f.placeholder, ''),
+        options: okSelect ? f.options.map(String) : []
+      });
+    });
+
+    return { siteName: str(given.siteName, 'cultlog'), categories: categories, extraFields: extraFields };
+  }
+
+  const SETTINGS = loadSettings();
+  const CATS = {};
+  SETTINGS.categories.forEach((c) => { CATS[c.id] = c; });
+  const ORDER = SETTINGS.categories.map((c) => c.id);
+
+  // 設定にないジャンルの記録(ジャンルを消したあとなど)も、消さずに表示する
+  function catMeta(id) {
+    return CATS[id] || { id: id, label: id, shape: 'circle', titlePh: 'タイトル', subEn: 'Detail', subJa: '詳細', subPh: '', memoPh: 'ひとこと感想' };
+  }
 
   // ---------- storage ----------
   function readLogsRaw() {
@@ -75,8 +161,15 @@
   function normLog(r) {
     if (!r || typeof r !== 'object') return null;
     const title = String(r.title == null ? '' : r.title).trim();
-    if (!title || !CATS[r.category]) return null;
+    if (!title || typeof r.category !== 'string' || !r.category) return null;
     const createdAt = Number(r.createdAt) || Number(r.id) || Date.now();
+    const extra = {};
+    if (r.extra && typeof r.extra === 'object') {
+      Object.keys(r.extra).forEach((k) => {
+        const v = r.extra[k];
+        if (typeof v === 'string' && v.trim()) extra[k] = v.trim();
+      });
+    }
     return {
       id: String(r.id == null || r.id === '' ? newId() : r.id),
       category: r.category,
@@ -84,6 +177,7 @@
       title: title,
       subtitle: String(r.subtitle != null ? r.subtitle : (r.creator != null ? r.creator : '')).trim(),
       memo: String(r.memo == null ? '' : r.memo).trim(),
+      extra: extra,
       createdAt: createdAt
     };
   }
@@ -112,9 +206,9 @@
   }
 
   const SYNC_LABEL = {
-    synced: ['synced', '同期済みです。'],
-    syncing: ['syncing', '同期しています…'],
-    offline: ['offline', 'オフラインです。つながったら自動で同期します。']
+    synced: ['同期済み', '同期済みです。'],
+    syncing: ['同期中', '同期しています…'],
+    offline: ['オフライン', 'オフラインです。つながったら自動で同期します。']
   };
 
   function authMessage(err) {
@@ -148,9 +242,7 @@
     svg.setAttribute('class', 'glyph');
     svg.setAttribute('viewBox', '0 0 24 24');
     svg.setAttribute('aria-hidden', 'true');
-    const use = document.createElementNS(SVG_NS, 'use');
-    use.setAttribute('href', '#g-' + cat);
-    svg.appendChild(use);
+    svg.innerHTML = SHAPES[catMeta(cat).shape];
     return svg;
   }
 
@@ -179,18 +271,57 @@
   const fSubLabel = $('f-sub-label');
   const fMemo = $('f-memo');
   const statusEl = $('status');
-  const chips = Array.prototype.slice.call(document.querySelectorAll('.chip'));
 
   fDate.value = todayISO();
 
+  // ジャンルのボタンを、設定から作る
+  SETTINGS.categories.forEach((c, i) => {
+    const label = el('label', 'chip');
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = 'cat';
+    input.value = c.id;
+    input.checked = i === 0;
+    label.appendChild(input);
+    label.appendChild(glyph(c.id));
+    label.appendChild(el('span', null, c.label));
+    $('chips').appendChild(label);
+  });
+  const chips = Array.prototype.slice.call(document.querySelectorAll('.chip'));
+
+  // 追加の入力欄を、設定から作る
+  const extraInputs = {};
+  SETTINGS.extraFields.forEach((f) => {
+    const wrap = el('div', 'field');
+    const lab = el('label', null, f.en);
+    lab.htmlFor = 'x-' + f.id;
+    lab.appendChild(el('span', null, f.ja));
+    let input;
+    if (f.type === 'select') {
+      input = document.createElement('select');
+      input.appendChild(new Option('—', ''));
+      f.options.forEach((o) => input.appendChild(new Option(o, o)));
+    } else {
+      input = document.createElement('input');
+      input.type = 'text';
+      input.placeholder = f.placeholder;
+      input.enterKeyHint = 'next';
+    }
+    input.id = 'x-' + f.id;
+    extraInputs[f.id] = input;
+    wrap.appendChild(lab);
+    wrap.appendChild(input);
+    $('extra-fields').appendChild(wrap);
+  });
+
   function selectedCat() {
     const c = form.querySelector('input[name="cat"]:checked');
-    return c ? c.value : 'movie';
+    return c ? c.value : ORDER[0];
   }
 
   function syncChips() {
     chips.forEach((chip) => chip.classList.toggle('is-on', chip.querySelector('input').checked));
-    const meta = CATS[selectedCat()];
+    const meta = catMeta(selectedCat());
     fTitle.placeholder = meta.titlePh;
     fSub.placeholder = meta.subPh;
     fMemo.placeholder = meta.memoPh;
@@ -209,6 +340,8 @@
       fTitle.focus();
       return;
     }
+    const extra = {};
+    Object.keys(extraInputs).forEach((id) => { extra[id] = extraInputs[id].value; });
     const entry = normLog({
       id: newId(),
       category: selectedCat(),
@@ -216,6 +349,7 @@
       title: title,
       subtitle: fSub.value,
       memo: fMemo.value,
+      extra: extra,
       createdAt: Date.now()
     });
     logs.push(entry);
@@ -229,6 +363,7 @@
     fTitle.value = '';
     fSub.value = '';
     fMemo.value = '';
+    Object.keys(extraInputs).forEach((id) => { extraInputs[id].value = ''; });
     activeFilter = 'all';
     render();
     setStatus(statusEl, '記録しました。', { link: { text: '一覧で見る', href: '#archive' } });
@@ -241,7 +376,7 @@
     box.textContent = '';
     const counts = { all: logs.length };
     ORDER.forEach((c) => { counts[c] = 0; });
-    logs.forEach((l) => { counts[l.category]++; });
+    logs.forEach((l) => { if (counts[l.category] !== undefined) counts[l.category]++; });
 
     [{ id: 'all', label: 'すべて' }].concat(ORDER.map((c) => ({ id: c, label: CATS[c].label }))).forEach((f) => {
       const b = el('button', 'flt');
@@ -268,10 +403,18 @@
     const body = el('div', 'e-body');
     const cat = el('div', 'e-cat');
     cat.appendChild(glyph(log.category));
-    cat.appendChild(el('span', null, CATS[log.category].label));
+    cat.appendChild(el('span', null, catMeta(log.category).label));
     body.appendChild(cat);
     body.appendChild(el('h3', 'e-title', log.title));
     if (log.subtitle) body.appendChild(el('div', 'e-sub', log.subtitle));
+    SETTINGS.extraFields.forEach((f) => {
+      const v = log.extra && log.extra[f.id];
+      if (!v) return;
+      const line = el('div', 'e-extra');
+      line.appendChild(el('span', null, f.ja));
+      line.appendChild(document.createTextNode(v));
+      body.appendChild(line);
+    });
     if (log.memo) body.appendChild(el('p', 'e-memo', log.memo));
 
     const actions = el('div', 'e-actions');
@@ -315,11 +458,10 @@
     if (!visible.length) {
       const empty = el('div', 'empty');
       if (!logs.length) {
-        empty.appendChild(el('p', 'big', 'Nothing here yet.'));
-        empty.appendChild(el('p', 'small', '最初の一件を記録しましょう。以前の記録がある場合は、下の「保存」から読み込めます。'));
+        empty.appendChild(el('p', 'big', 'まだ記録がありません。'));
+        empty.appendChild(el('p', 'small', '上のフォームから、最初の記録を追加してください。以前の記録がある場合は、下の「同期・保存」から読み込めます。'));
       } else {
-        empty.appendChild(el('p', 'big', 'No entries in this category.'));
-        empty.appendChild(el('p', 'small', 'このジャンルの記録はまだありません。'));
+        empty.appendChild(el('p', 'big', 'このジャンルの記録はまだありません。'));
       }
       box.appendChild(empty);
       return;
@@ -335,7 +477,7 @@
 
     groups.forEach((g) => {
       const h = el('h3', 'month', g.ym.replace('-', '.'));
-      h.appendChild(el('b', null, g.items.length + (g.items.length === 1 ? ' entry' : ' entries')));
+      h.appendChild(el('b', null, g.items.length + '件'));
       box.appendChild(h);
       g.items.forEach((l) => box.appendChild(buildEntry(l)));
     });
@@ -344,10 +486,25 @@
   function renderHero() {
     const n = logs.length;
     const key = syncStateKey();
-    const tag = key ? ' · ' + SYNC_LABEL[key][0] : '';
-    if (!n) { $('hero-meta').textContent = 'Your log begins here.' + tag; return; }
-    const oldest = logs.reduce((a, l) => (l.date < a ? l.date : a), logs[0].date);
-    $('hero-meta').textContent = n + (n === 1 ? ' entry' : ' entries') + ' · since ' + oldest.slice(0, 7).replace('-', '.') + tag;
+    const parts = [];
+    if (n) {
+      const [y, m] = logs.reduce((a, l) => (l.date < a ? l.date : a), logs[0].date).split('-').map(Number);
+      parts.push(y + '年' + m + '月から');
+    }
+    if (key) parts.push(SYNC_LABEL[key][0]);
+    $('hero-n').textContent = String(n);
+    $('hero-meta').textContent = parts.join(' ・ ');
+  }
+
+  // ---------- site name / notices ----------
+  document.title = SETTINGS.siteName;
+  $('wordmark').textContent = SETTINGS.siteName;
+  $('foot-name').textContent = SETTINGS.siteName;
+  const appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+  if (appleTitle) appleTitle.setAttribute('content', SETTINGS.siteName);
+  if (notices.length) {
+    $('notice').textContent = notices.join(' / ');
+    $('notice').hidden = false;
   }
 
   // ---------- backup ----------
